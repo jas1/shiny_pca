@@ -6,15 +6,18 @@ library(skimr)
 library(ggplot2)
 library(stringr)
 library(plotly)
+# https://github.com/fawda123/ggord/
 # http://www.sthda.com/english/articles/31-principal-component-methods-in-r-practical-guide/112-pca-principal-component-analysis-essentials/
 # install.packages(c("FactoMineR", "factoextra"))
-library("FactoMineR")
-library("factoextra")
-library("corrplot")#;install.packages("corrplot")
+
 # library("grid") 
 # library(devtools)
 # install_github("vqv/ggbiplot")
-library(ggbiplot)#;install.packages("ggbiplot")
+# library(ggbiplot)#;install.packages("ggbiplot")
+
+# library(devtools)
+# install_github('fawda123/ggord')
+library(ggord)
 
 library(shiny)
 library(shinydashboard)
@@ -24,15 +27,72 @@ library(shinydashboard)
 # pokemon_data <- readr::read_csv("pokemon.csv")
 
 # functions ---------------------------------------------------------------
-contribution_julio <- function(data){
-    pl <- data %>% as.data.frame() %>% 
+
+opcion_todos <- "Todos"
+
+screeplot_julio <- function(data,
+                            par_title="Gráfico de sedimentación de Componentes Principales",
+                            par_subtitle="rojo: proporcion acumulada",
+                            par_y="Proporcion de Variancia Explicada"){
+    
+    # data_pca$sdev
+    
+    pr.var <- data$sdev^2
+    pve <- pr.var / sum(pr.var)
+    pr_explained <- tibble(pc=colnames(data$rotation),
+                           pve,
+                           cumulative_prop=cumsum(pve))
+    
+    
+    plot_out <- pr_explained %>% 
+        ggplot(aes(y=pve,x=pc,group=""))+
+        geom_line()+
+        geom_point()+
+        geom_text(label = paste(round(pve,3)*100,' %'), vjust = -0.4, hjust = 0.5)+
+        geom_line(aes(y=cumulative_prop),color="red")+
+        geom_point(aes(y=cumulative_prop),color="red")+
+        geom_text(aes(y=cumulative_prop),color="red",label = paste(round(pr_explained$cumulative_prop,3)*100,' %'), vjust = -0.4, hjust = 0.5)+
+        scale_y_continuous(limits = c(0,1),labels = scales::percent) +
+        theme_light()+
+        labs(title=par_title,
+             subtitle=par_subtitle,
+             x="", y=par_y)
+    
+    plot_out
+    
+}
+# data_pca$rotation
+
+# contribution_julio(data_pca$rotation)
+# contribution_julio(data_pca$rotation,pc_filter=c("PC1"))
+# contribution_julio(data_pca$rotation,pc_filter=c("PC2"))
+contribution_julio <- function(data,pc_filter=c(),par_title="Contribucion de las variables a las Componentes Principales"){
+    
+    data_tmp <-  data %>% as.data.frame() %>% 
         tibble::rownames_to_column(var="variable") %>% 
-        gather(PC,valor,-variable) %>% 
-        ggplot(aes(x=PC,y=valor,fill=variable))+
-        geom_col() +
-        geom_hline(yintercept=0, linetype="dashed", color = "black") +
-        theme_light() +
-        labs(title="Contribucion de las variables a las Componentes Principales")
+        gather(PC,valor,-variable)
+    
+    pl <- ""
+    if(length(pc_filter) > 0 ){
+        data_tmp <- data_tmp %>% filter(PC %in% pc_filter)
+        pl <- data_tmp %>% 
+            ggplot(aes(x=variable,y=valor,fill=variable))+
+            geom_col() +
+            geom_hline(yintercept=0, linetype="dashed", color = "black") +
+            theme_light() +
+            labs(title=par_title,
+                 subtitle = paste0("para componente ", pc_filter))+
+            theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    }else{
+        pl <- data_tmp %>% 
+            ggplot(aes(x=PC,y=valor,fill=variable))+
+            geom_col() +
+            geom_hline(yintercept=0, linetype="dashed", color = "black") +
+            theme_light() +
+            labs(title=par_title)
+    }
+    
+
     
     pl
 }
@@ -87,9 +147,9 @@ body <- dashboardBody(
     tabItems(
         # TAB graph pov --------------------------------------------------------------------------
         tabItem(tabName = "disclaimer_app",div(
-            p("this app uses the package: FactoMineR And factoextra to perform the PCA analysis."),
+            p("this app uses the package: ggbiplot"),
             p("A complete tutorial on to interpret the results can be found on: "),
-            a(href="http://www.sthda.com/english/articles/31-principal-component-methods-in-r-practical-guide/112-pca-principal-component-analysis-essentials/",
+            a(href="http://www.sthda.com/english/articles/31-principal-component-methods-in-r-practical-guide/118-principal-component-analysis-in-r-prcomp-vs-princomp/",
               "Link to article.")
         )),
         tabItem(tabName = "upload_data",fileInput("data_file_upload","Select a file")),
@@ -184,7 +244,8 @@ server <- function(input, output,session) {
         
         # validate selected columns then , execute pca if valid
         if(selected_cols_are_valid(selected_cols, dataset_filtered_for_pca)){
-            ret_value <- PCA(dataset_filtered_for_pca(), graph = FALSE)    
+            ret_value <- prcomp(dataset_filtered_for_pca(),scale=TRUE)
+            # ret_value <- PCA(dataset_filtered_for_pca(), graph = FALSE)    
         }
         # data_pca <- prcomp(pokemon_data_pca,scale=TRUE)
         ret_value
@@ -208,17 +269,33 @@ server <- function(input, output,session) {
         ret_p <- NA
         # if(is.na(dataset_reactive_pca()) ){
         if(length(dataset_reactive_pca()) > 1 ) {
-            ret_p <- fviz_eig(dataset_reactive_pca(), addlabels = TRUE, ylim = c(0, 100))    
+            # ret_p <- fviz_eig(dataset_reactive_pca(), addlabels = TRUE, ylim = c(0, 100))
+            ret_p <- screeplot_julio(dataset_reactive_pca())
         }
         ret_p
     })
+ 
     
+    pc_seleccion_options_all <- reactive({
+        req(input$data_file_upload)
+        ret_opt <- NA
+        # if(is.na(dataset_reactive_pca()) ){
+        if(length(dataset_reactive_pca()) > 1 ) {
+            # ret_opt <- colnames(dataset_reactive_pca()$var$coord)
+            ret_opt <- colnames(dataset_reactive_pca()$rotation)
+            # ret_opt <- paste("PC",seq(nrow(dataset_reactive_pca()$eig)))
+            ret_opt <- c(opcion_todos,ret_opt)
+        }
+        ret_opt
+    })
+       
     pc_seleccion_options <- reactive({
         req(input$data_file_upload)
         ret_opt <- NA
         # if(is.na(dataset_reactive_pca()) ){
         if(length(dataset_reactive_pca()) > 1 ) {
-            ret_opt <- colnames(dataset_reactive_pca()$var$coord)
+            # ret_opt <- colnames(dataset_reactive_pca()$var$coord)
+            ret_opt <- colnames(dataset_reactive_pca()$rotation)
             # ret_opt <- paste("PC",seq(nrow(dataset_reactive_pca()$eig)))
         }
         ret_opt
@@ -240,8 +317,10 @@ server <- function(input, output,session) {
     # and the select of 
     observe({
         dataset_reactive_pca()
+        
+        
         updateSelectizeInput(session, "select_pc_contribution", 
-                             choices = pc_seleccion_options())
+                             choices = pc_seleccion_options_all())
         
         updateSelectizeInput(session, "select_pc_biplot_x", 
                              choices = pc_seleccion_options())
@@ -263,18 +342,26 @@ server <- function(input, output,session) {
         # if(is.na(dataset_reactive_pca()) ){
         if(length(dataset_reactive_pca()) > 1 ) {
             
-            current_pc_axis <- input$select_pc_contribution %>%
-                str_replace("\\.","") %>% 
-                parse_number() 
-
-            #ret_p <- fviz_contrib(data_pca_PCA, choice = "var", axes = current_pc_axis, top = 10)
-            ret_p <- fviz_contrib(dataset_reactive_pca(), choice = "var", axes = current_pc_axis)
+            if(input$select_pc_contribution == opcion_todos){
+                ret_p <-  contribution_julio(dataset_reactive_pca()$rotation)    
+            }else{
+                current_pc_axis <- input$select_pc_contribution %>%
+                    str_replace("\\.","") %>% 
+                    parse_number() 
+                
+                #ret_p <- fviz_contrib(data_pca_PCA, choice = "var", axes = current_pc_axis, top = 10)
+                # ret_p <- fviz_contrib(dataset_reactive_pca(), choice = "var", axes = current_pc_axis)
+                
+                ret_p <-  contribution_julio(dataset_reactive_pca()$rotation,pc_filter = paste0("PC",current_pc_axis))    
+            }
+            
+            
+            
         }
         ret_p
     })
     
     output$pca_biplot_out <- renderPlotly({
-    # output$pca_biplot_out <- renderPlot({
         ret_p <- NA
         req(input$select_pc_biplot_x)
         req(input$select_pc_biplot_y)
@@ -288,13 +375,17 @@ server <- function(input, output,session) {
                 parse_number() 
             
             #ret_p <- fviz_contrib(data_pca_PCA, choice = "var", axes = current_pc_axis, top = 10)
-            ret_p <- fviz_pca_biplot(dataset_reactive_pca(), repel = FALSE,
-                                     axes=c(current_pc_x,current_pc_y),
-                                     col.var = "#2E9FDF", # Variables color
-                                     col.ind = "#696969"  # Individuals color
-            )
+            # ret_p <- fviz_pca_biplot(dataset_reactive_pca(), repel = FALSE,
+            #                          axes=c(current_pc_x,current_pc_y),
+            #                          col.var = "#2E9FDF", # Variables color
+            #                          col.ind = "#696969"  # Individuals color
+            # )
+            # ret_p <- ggbiplot(dataset_reactive_pca(),choices = c(current_pc_x,current_pc_y))
+            ret_p <- ggord(dataset_reactive_pca(),
+                           axes = c(current_pc_x,current_pc_y),
+                           size = 0.5,
+                           vec_ext = 3, veccol = 'red', veclsz = 1,labcol = 'red')
         }
-        
         # ret_p
         ggplotly(ret_p)
     })

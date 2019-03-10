@@ -29,15 +29,22 @@ screeplot_julio <- function(data){
     
 }
 # data_pca$rotation
-contribution_julio <- function(data){
-    pl <- data %>% as.data.frame() %>% 
+contribution_julio <- function(data,pc_filter=c(),par_title="Contribucion de las variables a las Componentes Principales"){
+
+    data_tmp <-  data %>% as.data.frame() %>% 
         tibble::rownames_to_column(var="variable") %>% 
-        gather(PC,valor,-variable) %>% 
+        gather(PC,valor,-variable)
+    
+    if(length(pc_filter) > 0 ){
+        data_tmp <- data_tmp %>% filter(PC %in% pc_filter)
+    }
+    
+    pl <- data_tmp %>% 
         ggplot(aes(x=PC,y=valor,fill=variable))+
         geom_col() +
         geom_hline(yintercept=0, linetype="dashed", color = "black") +
         theme_light() +
-        labs(title="Contribucion de las variables a las Componentes Principales")
+        labs(title=par_title)
     
     pl
 }
@@ -51,9 +58,15 @@ pokemon_data <- readr::read_csv("pokemon.csv")
 select_columns <- c("Total","HitPoints","Attack","Defense","SpecialAttack","SpecialDefense","Speed")
 pokemon_data_pca<- pokemon_data %>% tibble::column_to_rownames(var="Name") %>% select(select_columns)
 
-
+# data_pca$rotation %>% as.data.frame() %>% 
+#     tibble::rownames_to_column(var="variable") %>% 
+#     gather(PC,valor,-variable)
 # skimr::skim(pokemon_data_pca)
 data_pca <- prcomp(pokemon_data_pca,scale=TRUE)
+screeplot_julio(data_pca)
+contribution_julio(data_pca$rotation)
+contribution_julio(data_pca$rotation,pc_filter = c("PC2"))
+colnames(data_pca$rotation)
 data_pca_PCA <- PCA(pokemon_data_pca, graph = FALSE)
 summary(data_pca_PCA)
 nrow(data_pca_PCA$eig)
@@ -94,3 +107,11 @@ summary(data_pca)
 plot(cumsum(pve), xlab = "Principal Component", 
      ylab = "Cumulative Proportion of Variance Explained", 
      ylim = c(0, 1), type = "b")
+
+
+ggbiplot(data_pca,choices = c(3,1))
+ggord(data_pca,
+      axes = c(3,1), 
+      vec_ext = 3, veccol = 'red', veclsz = 1,labcol = 'red',
+      size=0.5)
+
