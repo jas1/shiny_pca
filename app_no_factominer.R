@@ -24,7 +24,8 @@ library(shinydashboard)
 
 
 # load data ---------------------------------------------------------------
-# pokemon_data <- readr::read_csv("pokemon.csv")
+
+# loaded from application
 
 # functions ---------------------------------------------------------------
 

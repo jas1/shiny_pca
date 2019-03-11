@@ -20,8 +20,9 @@ library(shiny)
 library(shinydashboard)
 
 
+
 # load data ---------------------------------------------------------------
-# pokemon_data <- readr::read_csv("pokemon.csv")
+# loaded from the aplication
 
 # functions ---------------------------------------------------------------
 contribution_julio <- function(data){
